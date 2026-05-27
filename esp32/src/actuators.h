@@ -27,9 +27,10 @@ void initActuators() {
 
 void setBuzzer(bool on) {
     if (on) {
-        tone(PIN_BUZZER, 2000);
+        tone(PIN_BUZZER, 2000); // 2000Hz, adjust for loudness
     } else {
         noTone(PIN_BUZZER);
+        digitalWrite(PIN_BUZZER, HIGH); // keep silent
     }
 }
 

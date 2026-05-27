@@ -1,8 +1,8 @@
 #pragma once
 
 // --- WiFi ---
-#define WIFI_SSID     "PLDTHOMEFIBR6c9d8"
-#define WIFI_PASSWORD "PLDTWIFI34bcm"
+#define WIFI_SSID     "your_wifi"
+#define WIFI_PASSWORD "wifipass"
 
 // --- Backend ---
 #define SERVER_IP     "192.168.1.10"   // your machine's local IP

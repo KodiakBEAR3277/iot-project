@@ -48,13 +48,14 @@ bool postPIR(bool triggered) {
 
 struct ActuatorCommand {
     bool buzzer;
+    bool led;
     String oledMessage;
     bool valid;
 };
 
 // GET /api/actuators
 ActuatorCommand pollActuators() {
-    ActuatorCommand cmd = { false, "", false };
+    ActuatorCommand cmd = { false, false, "", false };
     HTTPClient http;
     http.begin(API_BASE "/actuators");
     http.addHeader("Accept", "application/json");
@@ -65,6 +66,7 @@ ActuatorCommand pollActuators() {
         DeserializationError err = deserializeJson(doc, http.getStream());
         if (!err) {
             cmd.buzzer      = doc["buzzer"]["state"].as<bool>();
+            cmd.led         = doc["led"]["state"].as<bool>();
             cmd.oledMessage = doc["oled"]["message"].as<String>();
             cmd.valid       = true;
         } else {

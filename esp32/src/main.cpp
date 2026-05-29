@@ -52,9 +52,11 @@ void loop() {
         ActuatorCommand cmd = pollActuators();
         if (cmd.valid) {
             setBuzzer(cmd.buzzer);
+            setLED(cmd.led);
             updateOLED(cmd.oledMessage);
-            Serial.printf("[ACT] Buzzer: %s | OLED: %s\n",
+            Serial.printf("[ACT] Buzzer: %s | LED: %s |OLED: %s\n",
                           cmd.buzzer ? "ON" : "OFF",
+                          cmd.led    ? "ON" : "OFF",
                           cmd.oledMessage.c_str());
             Serial.printf("[ACT] Raw buzzer value: %d\n", cmd.buzzer);
         }

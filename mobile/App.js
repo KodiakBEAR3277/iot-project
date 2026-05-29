@@ -1,23 +1,33 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  StyleSheet, View, Text, ScrollView,
-  RefreshControl, StatusBar, SafeAreaView, ActivityIndicator, Platform
+  StyleSheet, View, Text, ScrollView, Switch,
+  RefreshControl, StatusBar, SafeAreaView,
+  ActivityIndicator, TouchableOpacity, TextInput,
+  Platform, Alert
 } from 'react-native';
 
-const API_BASE = 'http://192.168.1.10:8000'; // your Laravel IP
+const API_BASE = 'http://192.168.1.10:8000';
 
 export default function App() {
-  const [data, setData]         = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [data, setData]           = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [threshold, setThreshold] = useState('35');
+  const [armed, setArmed]         = useState(false);
+  const [saving, setSaving]       = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/dashboard/live`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
+      const [liveRes, settingsRes] = await Promise.all([
+        fetch(`${API_BASE}/dashboard/live`),
+        fetch(`${API_BASE}/api/settings`),
+      ]);
+      const live     = await liveRes.json();
+      const settings = await settingsRes.json();
+      setData(live);
+      setThreshold(String(settings.temp_threshold));
+      setArmed(settings.system_armed);
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -27,32 +37,44 @@ export default function App() {
     }
   }, []);
 
-  // Poll every 2 seconds
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 2000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${API_BASE}/api/settings`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body:    JSON.stringify({ temp_threshold: parseFloat(threshold), system_armed: armed }),
+      });
+      Alert.alert('Saved', 'Settings updated successfully.');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to save settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchData();
   }, [fetchData]);
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#14b8a6" />
-        <Text style={styles.loadingText}>Connecting...</Text>
-      </View>
-    );
-  }
+  if (loading) return (
+    <View style={styles.centered}>
+      <ActivityIndicator size="large" color="#14b8a6"/>
+      <Text style={styles.loadingText}>Connecting...</Text>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor="#0a0a0a"/>
 
-      {/* Navbar */}
       <View style={styles.navbar}>
         <Text style={styles.navTitle}>🌡️ Heat Safety Monitor</Text>
         <View style={[styles.dot, { backgroundColor: error ? '#ef4444' : '#14b8a6' }]}/>
@@ -74,26 +96,22 @@ export default function App() {
           </View>
         )}
 
-        {/* Error Banner */}
         {error && (
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>⚠️ Cannot reach server: {error}</Text>
           </View>
         )}
 
-        {/* Cards Grid */}
+        {/* Status Cards */}
         <View style={styles.grid}>
-
-          {/* System */}
-          <View style={[styles.card, data?.armed && styles.cardTeal]}>
+          <View style={[styles.card, armed && styles.cardTeal]}>
             <Text style={styles.cardLabel}>SYSTEM</Text>
-            <Text style={[styles.cardValue, { color: data?.armed ? '#14b8a6' : '#6b7280' }]}>
-              {data?.armed ? 'ARMED' : 'DISARMED'}
+            <Text style={[styles.cardValue, { color: armed ? '#14b8a6' : '#6b7280' }]}>
+              {armed ? 'ARMED' : 'DISARMED'}
             </Text>
             <Text style={styles.cardSub}>Threshold: {data?.threshold}°C</Text>
           </View>
 
-          {/* Temperature */}
           <View style={[styles.card, data?.temp_high && styles.cardRed]}>
             <Text style={styles.cardLabel}>TEMPERATURE</Text>
             <Text style={[styles.cardValue, { color: data?.temp_high ? '#f87171' : '#ffffff' }]}>
@@ -102,7 +120,6 @@ export default function App() {
             <Text style={styles.cardSub}>{data?.temp_high ? 'Above threshold' : 'Normal'}</Text>
           </View>
 
-          {/* Humidity */}
           <View style={styles.card}>
             <Text style={styles.cardLabel}>HUMIDITY</Text>
             <Text style={[styles.cardValue, { color: '#ffffff' }]}>
@@ -111,7 +128,6 @@ export default function App() {
             <Text style={styles.cardSub}>Relative humidity</Text>
           </View>
 
-          {/* Motion */}
           <View style={[styles.card, data?.motion && styles.cardYellow]}>
             <Text style={styles.cardLabel}>MOTION</Text>
             <Text style={[styles.cardValue, { color: data?.motion ? '#fbbf24' : '#6b7280' }]}>
@@ -120,7 +136,6 @@ export default function App() {
             <Text style={styles.cardSub}>{data?.motion_ago ?? '—'}</Text>
           </View>
 
-          {/* Buzzer */}
           <View style={[styles.card, data?.buzzer && styles.cardRed]}>
             <Text style={styles.cardLabel}>BUZZER</Text>
             <Text style={[styles.cardValue, { color: data?.buzzer ? '#f87171' : '#6b7280' }]}>
@@ -128,10 +143,43 @@ export default function App() {
             </Text>
             <Text style={styles.cardSub}>Auto-controlled</Text>
           </View>
-
         </View>
 
-        {/* Recent Logs */}
+        {/* Settings Panel */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>System Settings</Text>
+
+          <View style={styles.settingsRow}>
+            <Text style={styles.settingsLabel}>Temp Threshold (°C)</Text>
+            <TextInput
+              style={styles.input}
+              value={threshold}
+              onChangeText={setThreshold}
+              keyboardType="numeric"
+              placeholderTextColor="#6b7280"
+            />
+          </View>
+
+          <View style={styles.settingsRow}>
+            <Text style={styles.settingsLabel}>Arm System</Text>
+            <Switch
+              value={armed}
+              onValueChange={setArmed}
+              trackColor={{ false: '#374151', true: '#0d9488' }}
+              thumbColor={armed ? '#14b8a6' : '#6b7280'}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+            onPress={saveSettings}
+            disabled={saving}
+          >
+            <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Settings'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Logs */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Sensor Logs</Text>
           <LogTable/>
@@ -150,10 +198,16 @@ function LogTable() {
       try {
         const res  = await fetch(`${API_BASE}/api/sensors`);
         const json = await res.json();
-        setLogs([...json.dht11_temp, ...json.dht11_humidity, ...json.pir]
-          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-          .slice(0, 20));
-      } catch {}
+        const merged = [
+          ...(json.dht11_temp     || []),
+          ...(json.dht11_humidity || []),
+          ...(json.pir            || []),
+        ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+         .slice(0, 20);
+        setLogs(merged);
+      } catch (e) {
+        console.error('Log fetch failed:', e);
+      }
     };
     fetchLogs();
     const interval = setInterval(fetchLogs, 5000);
@@ -168,13 +222,16 @@ function LogTable() {
         <Text style={[styles.tableCell, styles.tableHead]}>Unit</Text>
         <Text style={[styles.tableCell, styles.tableHead, { flex: 1.5 }]}>Time</Text>
       </View>
+      {logs.length === 0 && (
+        <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 8 }}>No logs yet...</Text>
+      )}
       {logs.map(log => (
         <View key={log.id} style={styles.tableRow}>
           <Text style={[styles.tableCell, styles.sensorTag, { flex: 1.5 }]}>
             {log.sensor_type.toUpperCase()}
           </Text>
           <Text style={[styles.tableCell, { color: '#fff' }]}>
-            {log.value ?? '—'}
+            {log.value ?? (log.triggered !== null ? (log.triggered ? 'YES' : 'NO') : '—')}
           </Text>
           <Text style={[styles.tableCell, { color: '#6b7280' }]}>
             {log.unit ?? '—'}
@@ -189,7 +246,8 @@ function LogTable() {
 }
 
 const styles = StyleSheet.create({
-  safe:         { flex: 1, backgroundColor: '#0a0a0a', paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
+  safe:         { flex: 1, backgroundColor: '#0a0a0a',
+                  paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
   centered:     { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0a0a0a' },
   loadingText:  { color: '#6b7280', marginTop: 12, fontSize: 14 },
   navbar:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -217,9 +275,18 @@ const styles = StyleSheet.create({
   cardValue:    { fontSize: 22, fontWeight: 'bold', marginBottom: 4 },
   cardSub:      { color: '#4b5563', fontSize: 11 },
   section:      { backgroundColor: '#111827', borderWidth: 1, borderColor: '#1f2937',
-                  borderRadius: 16, padding: 16 },
+                  borderRadius: 16, padding: 16, marginBottom: 16 },
   sectionTitle: { color: '#6b7280', fontSize: 12, letterSpacing: 1.5,
                   textTransform: 'uppercase', marginBottom: 12 },
+  settingsRow:  { flexDirection: 'row', justifyContent: 'space-between',
+                  alignItems: 'center', marginBottom: 16 },
+  settingsLabel:{ color: '#d1d5db', fontSize: 14 },
+  input:        { backgroundColor: '#1f2937', borderWidth: 1, borderColor: '#374151',
+                  borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8,
+                  color: '#ffffff', fontSize: 14, width: 80, textAlign: 'center' },
+  saveBtn:      { backgroundColor: '#0d9488', borderRadius: 10,
+                  paddingVertical: 12, alignItems: 'center', marginTop: 4 },
+  saveBtnText:  { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   tableHeader:  { flexDirection: 'row', borderBottomWidth: 1,
                   borderBottomColor: '#1f2937', paddingBottom: 8, marginBottom: 4 },
   tableRow:     { flexDirection: 'row', paddingVertical: 8,

@@ -15,19 +15,39 @@ class ActuatorController extends Controller {
      * Target: GET /api/actuators
      */
     public function index() {
-        // 1. Fetch system configuration properties
         $armed     = Setting::getValue('system_armed', 'false') === 'true';
         $threshold = (float) Setting::getValue('temp_threshold', 35);
+        $manualBuzzer = Setting::getValue('manual_buzzer', 'auto');
+        $manualLed    = Setting::getValue('manual_led',    'auto');
 
-        // 2. Gather latest sensor readings
         $latestTemp   = SensorLog::where('sensor_type', 'dht11_temp')->latest()->first();
         $latestMotion = SensorLog::where('sensor_type', 'pir')->latest()->first();
 
         $tempHigh      = $latestTemp   && (float)$latestTemp->value >= $threshold;
         $motionPresent = $latestMotion && $latestMotion->triggered;
+        $alertActive   = $armed && $tempHigh && $motionPresent;
 
-        // 3. Calculate what the states SHOULD be according to your automation safety logic
-        $calculatedBuzzer = $armed && $tempHigh && $motionPresent;
+        // Check for manual overrides
+        $buzzerOverride = ActuatorState::where('actuator', 'buzzer')
+                            ->where('manual', true)->first();
+        $ledOverride    = ActuatorState::where('actuator', 'led')
+                            ->where('manual', true)->first();
+
+        $buzzerManual = $buzzerOverride ? (bool)$buzzerOverride->state : false;
+        $ledManual    = $ledOverride    ? (bool)$ledOverride->state    : false;
+
+        // Alert takes priority, manual override only applies when no alert
+        // 'on' = forced on, 'off' = forced off, 'auto' = follow alert
+        $buzzerOn = match($manualBuzzer) {
+            'on'  => true,
+            'off' => false,
+            default => $alertActive,
+        };
+        $ledOn = match($manualLed) {
+            'on'  => true,
+            'off' => false,
+            default => $alertActive,
+        };
 
         $oledMessage = implode(' | ', array_filter([
             $latestTemp   ? round($latestTemp->value, 1) . 'C' : null,
@@ -35,28 +55,24 @@ class ActuatorController extends Controller {
             $armed        ? 'ARMED' : 'DISARMED',
         ]));
 
-        // 4. WRITE TO DATABASE (Fulfill Semestral Requirements)
-        // We use updateOrCreate so we don't spam infinite rows. We keep 1 row per actuator representing current status.
-        $buzzerState = ActuatorState::updateOrCreate(
-            ['actuator' => 'buzzer'],
-            [
-                'state' => (int)$calculatedBuzzer, 
-                'message' => $calculatedBuzzer ? 'ALERT' : 'SILENT'
-            ]
+        // Write auto state (manual=false)
+        ActuatorState::updateOrCreate(
+            ['actuator' => 'buzzer', 'manual' => false],
+            ['state' => (int)$buzzerOn, 'message' => $buzzerOn ? 'ALERT' : 'SILENT']
         );
-
-        $oledState = ActuatorState::updateOrCreate(
+        ActuatorState::updateOrCreate(
+            ['actuator' => 'led', 'manual' => false],
+            ['state' => (int)$ledOn, 'message' => $ledOn ? 'ON' : 'OFF']
+        );
+        ActuatorState::updateOrCreate(
             ['actuator' => 'oled'],
-            [
-                'state' => 1, 
-                'message' => $oledMessage
-            ]
+            ['state' => 1, 'message' => $oledMessage]
         );
 
-        // 5. Return JSON cleanly matching your ESP32 payload logic
         return response()->json([
-            'buzzer' => ['state' => (bool)$buzzerState->state],
-            'oled'   => ['state' => true, 'message' => $oledState->message],
+            'buzzer' => ['state' => $buzzerOn],
+            'led'    => ['state' => $ledOn],
+            'oled'   => ['state' => true, 'message' => $oledMessage],
             'system' => [
                 'armed'     => $armed,
                 'threshold' => $threshold,
@@ -72,17 +88,17 @@ class ActuatorController extends Controller {
      */
     public function store(Request $request) {
         $validated = $request->validate([
-            'actuator' => 'required|string|in:buzzer,oled',
+            'actuator' => 'required|string|in:buzzer,oled,led',
             'state'    => 'required|boolean',
             'message'  => 'nullable|string|max:64',
         ]);
 
         // Instead of create(), use updateOrCreate so your UI and index() pull from the same records!
         $state = ActuatorState::updateOrCreate(
-            ['actuator' => $validated['actuator']],
+            ['actuator' => $validated['actuator'], 'manual' => true],
             [
                 'state'   => (int)$validated['state'],
-                'message' => $validated['message'] ?? ($validated['state'] ? 'MANUAL_ON' : 'MANUAL_OFF')
+                'message' => $validated['state'] ? 'MANUAL_ON' : 'MANUAL_OFF',
             ]
         );
 

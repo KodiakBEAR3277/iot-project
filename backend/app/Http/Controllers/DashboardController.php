@@ -16,14 +16,17 @@ class DashboardController extends Controller {
         $threshold = (float) Setting::getValue('temp_threshold', 35);
         $armed     = Setting::getValue('system_armed', 'false') === 'true';
 
-        $tempHigh     = $latestTemp   && (float)$latestTemp->value >= $threshold;
-        $motionPresent= $latestMotion && $latestMotion->triggered;
-        $buzzerRecord = \App\Models\ActuatorState::where('actuator', 'buzzer')->first();
-        $buzzerActive = $buzzerRecord ? (bool)$buzzerRecord->state : false;
+        $tempHigh      = $latestTemp   && (float)$latestTemp->value >= $threshold;
+        $motionPresent = $latestMotion && $latestMotion->triggered;
+        $buzzerRecord  = ActuatorState::where('actuator', 'buzzer')->first();
+        $buzzerActive  = $buzzerRecord ? (bool)$buzzerRecord->state : false;
+        $ledRecord     = ActuatorState::where('actuator', 'led')->first();      // ← add
+        $ledActive     = $ledRecord ? (bool)$ledRecord->state : false;          // ← add
 
         return view('dashboard', compact(
             'latestTemp', 'latestMotion', 'recentLogs',
-            'threshold', 'armed', 'tempHigh', 'motionPresent', 'buzzerActive'
+            'threshold', 'armed', 'tempHigh', 'motionPresent',
+            'buzzerActive', 'ledActive'                                         // ← add ledActive
         ));
     }
 
@@ -36,6 +39,8 @@ class DashboardController extends Controller {
         $tempHigh       = $latestTemp && (float)$latestTemp->value >= $threshold;
         $motionPresent  = $latestMotion && $latestMotion->triggered;
         $buzzerActive   = $armed && $tempHigh && $motionPresent;
+        $ledRecord  = ActuatorState::where('actuator', 'led')->first();
+        $ledActive  = $ledRecord ? (bool)$ledRecord->state : false;
 
         return response()->json([
             'temp'      => $latestTemp     ? round($latestTemp->value, 1)     : null,
@@ -46,16 +51,18 @@ class DashboardController extends Controller {
             'temp_high' => $tempHigh,
             'buzzer'    => $buzzerActive,
             'motion_ago'=> $latestMotion   ? $latestMotion->updated_at->diffForHumans() : 'No data',
+            'led' => $ledActive,
         ]);
 }
     public function toggleActuator(Request $request) {
         $validated = $request->validate([
-            'actuator' => 'required|in:buzzer,oled',
-            'state'    => 'required|boolean',
-            'message'  => 'nullable|string|max:64',
+            'actuator' => 'required|in:buzzer,led',
+            'state'    => 'required|in:on,off,auto',
         ]);
 
-        ActuatorState::create($validated);
-        return back()->with('success', ucfirst($validated['actuator']) . ' updated.');
+        $key = 'manual_' . $validated['actuator'];
+        Setting::setValue($key, $validated['state']);
+
+        return back()->with('success', ucfirst($validated['actuator']) . ' set to ' . $validated['state']);
     }
 }

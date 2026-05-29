@@ -23,11 +23,14 @@ class SensorController extends Controller {
 
     // Dashboard fetches latest readings
     public function latest() {
-        $dht11 = SensorLog::where('sensor_type', 'dht11')
-                    ->latest()->limit(10)->get();
-        $pir   = SensorLog::where('sensor_type', 'pir')
-                    ->latest()->limit(10)->get();
+        $dht11_temp     = SensorLog::where('sensor_type', 'dht11_temp')->latest()->limit(10)->get();
+        $dht11_humidity = SensorLog::where('sensor_type', 'dht11_humidity')->latest()->limit(10)->get();
+        $pir            = SensorLog::where('sensor_type', 'pir')->latest()->limit(10)->get();
 
-        return response()->json(['dht11' => $dht11, 'pir' => $pir]);
+        return response()->json([
+            'dht11_temp'     => $dht11_temp,
+            'dht11_humidity' => $dht11_humidity,
+            'pir'            => $pir,
+        ]);
     }
 }

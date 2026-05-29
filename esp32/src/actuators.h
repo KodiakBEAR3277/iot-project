@@ -11,6 +11,11 @@ void initActuators() {
     pinMode(PIN_BUZZER, OUTPUT);
     digitalWrite(PIN_BUZZER, HIGH);
 
+
+    // LED
+    pinMode(PIN_LED, OUTPUT);
+    digitalWrite(PIN_LED, LOW);
+    
     // OLED
     Wire.begin(OLED_SDA, OLED_SCL);
     if (!oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
@@ -23,6 +28,10 @@ void initActuators() {
         oled.println("Booting...");
         oled.display();
     }
+}
+
+void setLED(bool on) {
+    digitalWrite(PIN_LED, on ? HIGH : LOW);
 }
 
 void setBuzzer(bool on) {

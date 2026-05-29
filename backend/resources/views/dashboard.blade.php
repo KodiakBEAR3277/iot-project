@@ -4,8 +4,7 @@
 @section('content')
 
 {{-- ── ALERT BANNER ─────────────────────────────────────────── --}}
-@if($buzzerActive)
-<div id="alert-banner" style="display: {{ $buzzerActive ? 'flex' : 'none' }}" 
+<div id="alert-banner" style="display: {{ $buzzerActive ? 'flex' : 'none' }}"
     class="mt-6 bg-red-900/50 border border-red-500 rounded-2xl px-6 py-4 flex items-center gap-4 animate-pulse">
     <span class="text-3xl">🚨</span>
     <div>
@@ -13,7 +12,6 @@
         <p class="text-red-400 text-sm">Temperature exceeds threshold and motion is present. Buzzer is active.</p>
     </div>
 </div>
-@endif
 
 {{-- ── STATUS CARDS ─────────────────────────────────────────── --}}
 <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
@@ -70,6 +68,14 @@
         <span class="text-xs text-gray-600">Auto-controlled</span>
     </div>
 
+    {{-- LED --}}
+    <div id="card-led-wrap" class="bg-gray-900 border {{ $ledActive ? 'border-teal-500' : 'border-gray-700' }} rounded-2xl p-5 flex flex-col gap-1">
+        <span class="text-xs text-gray-500 uppercase tracking-widest">LED</span>
+        <span id="card-led" class="text-2xl font-bold {{ $ledActive ? 'text-teal-400' : 'text-gray-500' }}">
+            {{ $ledActive ? 'ON' : 'OFF' }}
+        </span>
+        <span class="text-xs text-gray-600">Alert + manual</span>
+    </div>
 </div>
 
 {{-- ── SETTINGS FORM ────────────────────────────────────────── --}}
@@ -107,6 +113,72 @@
         </button>
 
     </form>
+
+    <div class="mt-6 bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">Manual Overrides</h2>
+        <div class="flex flex-wrap gap-4">
+
+            {{-- Buzzer --}}
+            <div class="flex items-center gap-2">
+                <span class="text-sm text-gray-300 mr-1">Buzzer</span>
+                <form method="POST" action="{{ route('actuator.toggle') }}">
+                    @csrf
+                    <input type="hidden" name="actuator" value="buzzer">
+                    <input type="hidden" name="state" value="on">
+                    <button class="bg-red-700 hover:bg-red-600 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">
+                        Force ON
+                    </button>
+                </form>
+                <form method="POST" action="{{ route('actuator.toggle') }}">
+                    @csrf
+                    <input type="hidden" name="actuator" value="buzzer">
+                    <input type="hidden" name="state" value="off">
+                    <button class="bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">
+                        Force OFF
+                    </button>
+                </form>
+                <form method="POST" action="{{ route('actuator.toggle') }}">
+                    @csrf
+                    <input type="hidden" name="actuator" value="buzzer">
+                    <input type="hidden" name="state" value="auto">
+                    <button class="bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">
+                        Auto
+                    </button>
+                </form>
+            </div>
+
+            {{-- LED --}}
+            <div class="flex items-center gap-2">
+                <span class="text-sm text-gray-300 mr-1">LED</span>
+                <form method="POST" action="{{ route('actuator.toggle') }}">
+                    @csrf
+                    <input type="hidden" name="actuator" value="led">
+                    <input type="hidden" name="state" value="on">
+                    <button class="bg-teal-700 hover:bg-teal-600 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">
+                        Turn ON
+                    </button>
+                </form>
+                <form method="POST" action="{{ route('actuator.toggle') }}">
+                    @csrf
+                    <input type="hidden" name="actuator" value="led">
+                    <input type="hidden" name="state" value="off">
+                    <button class="bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">
+                        Turn OFF
+                    </button>
+                </form>
+                <form method="POST" action="{{ route('actuator.toggle') }}">
+                    @csrf
+                    <input type="hidden" name="actuator" value="led">
+                    <input type="hidden" name="state" value="auto">
+                    <button class="bg-teal-800 hover:bg-teal-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">
+                        Auto
+                    </button>
+                </form>
+            </div>
+
+        </div>
+    </div>
+</div>
 </div>
 
 {{-- ── SENSOR LOG TABLE ─────────────────────────────────────── --}}
@@ -160,7 +232,6 @@
     @endif
 </div>
 
-@endsection
 
 <script>
 async function fetchLive() {
@@ -201,6 +272,13 @@ async function fetchLive() {
         document.getElementById('card-buzzer-wrap').className =
             'bg-gray-900 border ' + (data.buzzer ? 'border-red-500' : 'border-gray-700') + ' rounded-2xl p-5 flex flex-col gap-1';
 
+        // LED
+        document.getElementById('card-led').textContent = data.led ? 'ON' : 'OFF';
+        document.getElementById('card-led').className =
+            'text-2xl font-bold ' + (data.led ? 'text-teal-400' : 'text-gray-500');
+        document.getElementById('card-led-wrap').className =
+            'bg-gray-900 border ' + (data.led ? 'border-teal-500' : 'border-gray-700') + ' rounded-2xl p-5 flex flex-col gap-1';
+        
         // Alert banner
         document.getElementById('alert-banner').style.display =
             data.buzzer ? 'flex' : 'none';
@@ -214,3 +292,7 @@ async function fetchLive() {
 setInterval(fetchLive, 500);
 fetchLive(); // run immediately on load
 </script>
+
+
+@endsection
+

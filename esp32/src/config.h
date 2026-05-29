@@ -2,7 +2,7 @@
 
 // --- WiFi ---
 #define WIFI_SSID     "your_wifi"
-#define WIFI_PASSWORD "wifipass"
+#define WIFI_PASSWORD "your_password"
 
 // --- Backend ---
 #define SERVER_IP     "192.168.1.10"   // your machine's local IP

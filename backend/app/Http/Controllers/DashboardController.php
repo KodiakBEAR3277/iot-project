@@ -18,7 +18,8 @@ class DashboardController extends Controller {
 
         $tempHigh     = $latestTemp   && (float)$latestTemp->value >= $threshold;
         $motionPresent= $latestMotion && $latestMotion->triggered;
-        $buzzerActive = $armed && $tempHigh && $motionPresent;
+        $buzzerRecord = \App\Models\ActuatorState::where('actuator', 'buzzer')->first();
+        $buzzerActive = $buzzerRecord ? (bool)$buzzerRecord->state : false;
 
         return view('dashboard', compact(
             'latestTemp', 'latestMotion', 'recentLogs',

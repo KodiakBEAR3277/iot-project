@@ -183,7 +183,7 @@ async function fetchLive() {
         // Motion
         document.getElementById('card-motion').textContent =
             data.motion ? 'DETECTED' : 'CLEAR';
-        ocument.getElementById('card-motion').className =
+        document.getElementById('card-motion').className =
             'text-2xl font-bold ' + (data.motion ? 'text-yellow-400' : 'text-gray-500');
         document.getElementById('card-motion-ago').textContent = data.motion_ago;
         document.getElementById('card-motion-wrap').className =

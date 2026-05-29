@@ -260,11 +260,28 @@ async function fetchLive() {
         document.getElementById('card-motion-wrap').className =
             'bg-gray-900 border ' + (data.motion ? 'border-yellow-500' : 'border-gray-700') + ' rounded-2xl p-5 flex flex-col gap-1';
 
-        // System
+        // System (Text and Wrapper Border Sync)
         document.getElementById('card-system').textContent =
             data.armed ? 'ARMED' : 'DISARMED';
         document.getElementById('card-system').className =
             'text-2xl font-bold ' + (data.armed ? 'text-teal-400' : 'text-gray-500');
+        document.getElementById('card-system-wrap').className =
+            'bg-gray-900 border ' + (data.armed ? 'border-teal-600' : 'border-gray-700') + ' rounded-2xl p-5 flex flex-col gap-1';
+
+        // FIX: Sync the form toggle switch with live data
+        const systemCheckbox = document.querySelector('input[name="system_armed"]');
+        if (systemCheckbox) {
+            systemCheckbox.checked = !!data.armed;
+        }
+        // Sync the live threshold setting text
+        if(document.getElementById('card-threshold') && data.threshold !== undefined) {
+            document.getElementById('card-threshold').textContent = 'Threshold: ' + data.threshold + '°C';
+        }
+
+        const tempInput = document.querySelector('input[name="temp_threshold"]');
+        if (tempInput && document.activeElement !== tempInput) {
+            tempInput.value = data.threshold;
+        }
 
         // Buzzer
         document.getElementById('card-buzzer').textContent =

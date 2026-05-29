@@ -6,16 +6,21 @@ import {
   Platform, Alert
 } from 'react-native';
 
-const API_BASE = 'http://192.168.1.10:8000';
+const API_BASE = 'http://192.168.0.103:8000';
 
 export default function App() {
-  const [data, setData]           = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState(null);
+  const [data, setData]             = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [threshold, setThreshold] = useState('35');
-  const [armed, setArmed]         = useState(false);
-  const [saving, setSaving]       = useState(false);
+  const [threshold, setThreshold]   = useState('35');
+  const [armed, setArmed]           = useState(false);
+  const [manualBuzzer, setManualBuzzer] = useState('auto');
+  const [manualLed, setManualLed]       = useState('auto');
+  const [saving, setSaving]         = useState(false);
+  
+  // FIX 1: Track if the user is typing/editing the threshold field
+  const [isEditing, setIsEditing]   = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -25,9 +30,17 @@ export default function App() {
       ]);
       const live     = await liveRes.json();
       const settings = await settingsRes.json();
+      
       setData(live);
-      setThreshold(String(settings.temp_threshold));
       setArmed(settings.system_armed);
+      setManualBuzzer(settings.manual_buzzer ?? 'auto');
+      setManualLed(settings.manual_led ?? 'auto');
+      
+      // FIX 2: Only overwrite the threshold state if the user IS NOT typing right now
+      if (!isEditing) {
+        setThreshold(String(settings.temp_threshold));
+      }
+      
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -35,7 +48,7 @@ export default function App() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isEditing]); // Add isEditing dependency to prevent stale closures
 
   useEffect(() => {
     fetchData();
@@ -49,13 +62,31 @@ export default function App() {
       await fetch(`${API_BASE}/api/settings`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body:    JSON.stringify({ temp_threshold: parseFloat(threshold), system_armed: armed }),
+        body: JSON.stringify({
+          temp_threshold: parseFloat(threshold),
+          system_armed:   armed,
+        }),
       });
+      setIsEditing(false); // Reset editing flag after a successful save
       Alert.alert('Saved', 'Settings updated successfully.');
     } catch (e) {
       Alert.alert('Error', 'Failed to save settings.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const setOverride = async (actuator, state) => {
+    try {
+      await fetch(`${API_BASE}/api/settings`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ [`manual_${actuator}`]: state }),
+      });
+      if (actuator === 'buzzer') setManualBuzzer(state);
+      else setManualLed(state);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to update override.');
     }
   };
 
@@ -104,10 +135,11 @@ export default function App() {
 
         {/* Status Cards */}
         <View style={styles.grid}>
-          <View style={[styles.card, armed && styles.cardTeal]}>
+
+          <View style={[styles.card, data?.armed && styles.cardTeal]}>
             <Text style={styles.cardLabel}>SYSTEM</Text>
-            <Text style={[styles.cardValue, { color: armed ? '#14b8a6' : '#6b7280' }]}>
-              {armed ? 'ARMED' : 'DISARMED'}
+            <Text style={[styles.cardValue, { color: data?.armed ? '#14b8a6' : '#6b7280' }]}>
+              {data?.armed ? 'ARMED' : 'DISARMED'}
             </Text>
             <Text style={styles.cardSub}>Threshold: {data?.threshold}°C</Text>
           </View>
@@ -141,20 +173,39 @@ export default function App() {
             <Text style={[styles.cardValue, { color: data?.buzzer ? '#f87171' : '#6b7280' }]}>
               {data?.buzzer ? 'ACTIVE' : 'SILENT'}
             </Text>
-            <Text style={styles.cardSub}>Auto-controlled</Text>
+            <Text style={styles.cardSub}>
+              {manualBuzzer === 'auto' ? 'Auto-controlled' : `Manual: ${manualBuzzer.toUpperCase()}`}
+            </Text>
           </View>
+
+          <View style={[styles.card, data?.led && styles.cardTeal]}>
+            <Text style={styles.cardLabel}>LED</Text>
+            <Text style={[styles.cardValue, { color: data?.led ? '#14b8a6' : '#6b7280' }]}>
+              {data?.led ? 'ON' : 'OFF'}
+            </Text>
+            <Text style={styles.cardSub}>
+              {manualLed === 'auto' ? 'Alert + manual' : `Manual: ${manualLed.toUpperCase()}`}
+            </Text>
+          </View>
+
         </View>
 
-        {/* Settings Panel */}
+        {/* System Settings */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>System Settings</Text>
 
           <View style={styles.settingsRow}>
             <Text style={styles.settingsLabel}>Temp Threshold (°C)</Text>
+            {/* FIX 3: Added onFocus and onBlur handlers here */}
             <TextInput
               style={styles.input}
               value={threshold}
-              onChangeText={setThreshold}
+              onChangeText={(text) => {
+                setIsEditing(true);
+                setThreshold(text);
+              }}
+              onFocus={() => setIsEditing(true)}
+              onBlur={() => setIsEditing(false)}
               keyboardType="numeric"
               placeholderTextColor="#6b7280"
             />
@@ -177,6 +228,61 @@ export default function App() {
           >
             <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Settings'}</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Manual Overrides */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Manual Overrides</Text>
+
+          {/* Buzzer */}
+          <View style={styles.overrideRow}>
+            <Text style={styles.overrideLabel}>Buzzer</Text>
+            <View style={styles.overrideBtns}>
+              <TouchableOpacity
+                style={[styles.overrideBtn, styles.btnRed,
+                        manualBuzzer === 'on' && styles.btnActive]}
+                onPress={() => setOverride('buzzer', 'on')}>
+                <Text style={styles.overrideBtnText}>Force ON</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.overrideBtn, styles.btnGray,
+                        manualBuzzer === 'off' && styles.btnActive]}
+                onPress={() => setOverride('buzzer', 'off')}>
+                <Text style={styles.overrideBtnText}>Force OFF</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.overrideBtn, styles.btnTealDark,
+                        manualBuzzer === 'auto' && styles.btnActive]}
+                onPress={() => setOverride('buzzer', 'auto')}>
+                <Text style={styles.overrideBtnText}>Auto</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* LED */}
+          <View style={[styles.overrideRow, { marginTop: 12 }]}>
+            <Text style={styles.overrideLabel}>LED</Text>
+            <View style={styles.overrideBtns}>
+              <TouchableOpacity
+                style={[styles.overrideBtn, styles.btnTeal,
+                        manualLed === 'on' && styles.btnActive]}
+                onPress={() => setOverride('led', 'on')}>
+                <Text style={styles.overrideBtnText}>Turn ON</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.overrideBtn, styles.btnGray,
+                        manualLed === 'off' && styles.btnActive]}
+                onPress={() => setOverride('led', 'off')}>
+                <Text style={styles.overrideBtnText}>Turn OFF</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.overrideBtn, styles.btnTealDark,
+                        manualLed === 'auto' && styles.btnActive]}
+                onPress={() => setOverride('led', 'auto')}>
+                <Text style={styles.overrideBtnText}>Auto</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
         {/* Logs */}
@@ -246,52 +352,62 @@ function LogTable() {
 }
 
 const styles = StyleSheet.create({
-  safe:         { flex: 1, backgroundColor: '#0a0a0a',
-                  paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
-  centered:     { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0a0a0a' },
-  loadingText:  { color: '#6b7280', marginTop: 12, fontSize: 14 },
-  navbar:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                  paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#111827',
-                  borderBottomWidth: 1, borderBottomColor: '#1f2937' },
-  navTitle:     { color: '#14b8a6', fontWeight: 'bold', fontSize: 16 },
-  dot:          { width: 8, height: 8, borderRadius: 4 },
-  scroll:       { padding: 16, paddingBottom: 40 },
-  alertBanner:  { flexDirection: 'row', alignItems: 'center', gap: 12,
-                  backgroundColor: 'rgba(127,29,29,0.5)', borderWidth: 1,
-                  borderColor: '#ef4444', borderRadius: 16, padding: 16, marginBottom: 12 },
-  alertIcon:    { fontSize: 28 },
-  alertTitle:   { color: '#fca5a5', fontWeight: 'bold', fontSize: 15 },
-  alertSub:     { color: '#f87171', fontSize: 12, marginTop: 2 },
-  errorBanner:  { backgroundColor: 'rgba(120,53,15,0.4)', borderWidth: 1,
-                  borderColor: '#f59e0b', borderRadius: 12, padding: 12, marginBottom: 12 },
-  errorText:    { color: '#fcd34d', fontSize: 13 },
-  grid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  card:         { width: '47%', backgroundColor: '#111827', borderWidth: 1,
-                  borderColor: '#374151', borderRadius: 16, padding: 16 },
-  cardTeal:     { borderColor: '#0d9488' },
-  cardRed:      { borderColor: '#ef4444' },
-  cardYellow:   { borderColor: '#f59e0b' },
-  cardLabel:    { color: '#6b7280', fontSize: 10, letterSpacing: 1.5, marginBottom: 6 },
-  cardValue:    { fontSize: 22, fontWeight: 'bold', marginBottom: 4 },
-  cardSub:      { color: '#4b5563', fontSize: 11 },
-  section:      { backgroundColor: '#111827', borderWidth: 1, borderColor: '#1f2937',
-                  borderRadius: 16, padding: 16, marginBottom: 16 },
-  sectionTitle: { color: '#6b7280', fontSize: 12, letterSpacing: 1.5,
-                  textTransform: 'uppercase', marginBottom: 12 },
-  settingsRow:  { flexDirection: 'row', justifyContent: 'space-between',
-                  alignItems: 'center', marginBottom: 16 },
-  settingsLabel:{ color: '#d1d5db', fontSize: 14 },
-  input:        { backgroundColor: '#1f2937', borderWidth: 1, borderColor: '#374151',
-                  borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8,
-                  color: '#ffffff', fontSize: 14, width: 80, textAlign: 'center' },
-  saveBtn:      { backgroundColor: '#0d9488', borderRadius: 10,
-                  paddingVertical: 12, alignItems: 'center', marginTop: 4 },
-  saveBtnText:  { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
-  tableHeader:  { flexDirection: 'row', borderBottomWidth: 1,
-                  borderBottomColor: '#1f2937', paddingBottom: 8, marginBottom: 4 },
-  tableRow:     { flexDirection: 'row', paddingVertical: 8,
-                  borderBottomWidth: 1, borderBottomColor: '#1f2937' },
-  tableCell:    { flex: 1, fontSize: 12, color: '#9ca3af' },
-  tableHead:    { color: '#6b7280', fontSize: 11 },
-  sensorTag:    { color: '#14b8a6', fontWeight: '600' },
+  safe:          { flex: 1, backgroundColor: '#0a0a0a',
+                   paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
+  centered:      { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0a0a0a' },
+  loadingText:   { color: '#6b7280', marginTop: 12, fontSize: 14 },
+  navbar:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                   paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#111827',
+                   borderBottomWidth: 1, borderBottomColor: '#1f2937' },
+  navTitle:      { color: '#14b8a6', fontWeight: 'bold', fontSize: 16 },
+  dot:           { width: 8, height: 8, borderRadius: 4 },
+  scroll:        { padding: 16, paddingBottom: 40 },
+  alertBanner:   { flexDirection: 'row', alignItems: 'center', gap: 12,
+                   backgroundColor: 'rgba(127,29,29,0.5)', borderWidth: 1,
+                   borderColor: '#ef4444', borderRadius: 16, padding: 16, marginBottom: 12 },
+  alertIcon:     { fontSize: 28 },
+  alertTitle:    { color: '#fca5a5', fontWeight: 'bold', fontSize: 15 },
+  alertSub:      { color: '#f87171', fontSize: 12, marginTop: 2 },
+  errorBanner:   { backgroundColor: 'rgba(120,53,15,0.4)', borderWidth: 1,
+                   borderColor: '#f59e0b', borderRadius: 12, padding: 12, marginBottom: 12 },
+  errorText:     { color: '#fcd34d', fontSize: 13 },
+  grid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  card:          { width: '47%', backgroundColor: '#111827', borderWidth: 1,
+                   borderColor: '#374151', borderRadius: 16, padding: 16 },
+  cardTeal:      { borderColor: '#0d9488' },
+  cardRed:       { borderColor: '#ef4444' },
+  cardYellow:    { borderColor: '#f59e0b' },
+  cardLabel:     { color: '#6b7280', fontSize: 10, letterSpacing: 1.5, marginBottom: 6 },
+  cardValue:     { fontSize: 22, fontWeight: 'bold', marginBottom: 4 },
+  cardSub:       { color: '#4b5563', fontSize: 11 },
+  section:       { backgroundColor: '#111827', borderWidth: 1, borderColor: '#1f2937',
+                   borderRadius: 16, padding: 16, marginBottom: 16 },
+  sectionTitle:  { color: '#6b7280', fontSize: 12, letterSpacing: 1.5,
+                   textTransform: 'uppercase', marginBottom: 12 },
+  settingsRow:   { flexDirection: 'row', justifyContent: 'space-between',
+                   alignItems: 'center', marginBottom: 16 },
+  settingsLabel: { color: '#d1d5db', fontSize: 14 },
+  input:         { backgroundColor: '#1f2937', borderWidth: 1, borderColor: '#374151',
+                   borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8,
+                   color: '#ffffff', fontSize: 14, width: 80, textAlign: 'center' },
+  saveBtn:       { backgroundColor: '#0d9488', borderRadius: 10,
+                   paddingVertical: 12, alignItems: 'center', marginTop: 4 },
+  saveBtnText:   { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
+  overrideRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  overrideLabel: { color: '#d1d5db', fontSize: 14, width: 55 },
+  overrideBtns:  { flexDirection: 'row', gap: 8, flex: 1, justifyContent: 'flex-end' },
+  overrideBtn:   { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  overrideBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '600' },
+  btnRed:        { backgroundColor: '#b91c1c' },
+  btnTeal:       { backgroundColor: '#0f766e' },
+  btnTealDark:   { backgroundColor: '#134e4a' },
+  btnGray:       { backgroundColor: '#374151' },
+  btnActive:     { opacity: 1, borderWidth: 1.5, borderColor: '#ffffff' },
+  tableHeader:   { flexDirection: 'row', borderBottomWidth: 1,
+                   borderBottomColor: '#1f2937', paddingBottom: 8, marginBottom: 4 },
+  tableRow:      { flexDirection: 'row', paddingVertical: 8,
+                   borderBottomWidth: 1, borderBottomColor: '#1f2937' },
+  tableCell:     { flex: 1, fontSize: 12, color: '#9ca3af' },
+  tableHead:     { color: '#6b7280', fontSize: 11 },
+  sensorTag:     { color: '#14b8a6', fontWeight: '600' },
 });

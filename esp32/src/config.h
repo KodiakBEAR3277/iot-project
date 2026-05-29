@@ -1,7 +1,7 @@
 #pragma once
 
 // --- WiFi ---
-#define WIFI_SSID     "wifi_add"
+#define WIFI_SSID     "wifi_name"
 #define WIFI_PASSWORD "password"
 
 // --- Backend ---
